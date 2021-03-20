@@ -34,7 +34,7 @@ let images = [];
 let MAX_IMAGES = 10;
 
 let valuesOverTime = [];
-let MAX_VALUES = 400;
+let MAX_VALUES = 800;
 
 function resetLimits(){
   maxValue = 0;
@@ -57,7 +57,7 @@ function draw() {
   image(nowframe, 0, 0, w, h);
 
   // if(lastframe!==null) image(lastframe, w, 0, w, h);
-  if(images[(i+1) % MAX_IMAGES]) image(images[(i+1) % MAX_IMAGES], w, 0, w, h);
+  if(images[(i+1) % MAX_IMAGES]) image(images[(i+1) % MAX_IMAGES], w, 0, w, h); // normal camera image (right side)
 
 
 //   if(lastframe!==null){
@@ -76,9 +76,59 @@ function draw() {
   // if(i%1==0)
   lastframe = capture.get();
 
-  valuesOverTime[i%MAX_VALUES] = changeValue;
-  let maxInTimeFrame = valuesOverTime.reduce((max, ele) => {return Math.max(max, ele)});
-  let minInTimeFrame = valuesOverTime.reduce((min, ele) => {return Math.min(min, ele)});
+  valuesOverTime[i%MAX_VALUES] = {value:changeValue, timestamp: Date.now()};
+  let maxInTimeFrame = valuesOverTime.reduce((max, ele) => {return {value: Math.max(max.value, ele.value)}});
+  let minInTimeFrame = valuesOverTime.reduce((min, ele) => {return {value: Math.min(min.value, ele.value)}});
+
+  // do auto correlation
+  const corrLen = MAX_VALUES/2;
+  const head = i%MAX_VALUES;
+
+  let corrRes = [];
+
+  let dropAtStart = 10;
+
+  for(let s=dropAtStart; s<corrLen;s++ ){
+
+    for(let i=0;i<corrLen;i++) {
+      let posSteady = head-i;
+      let posShifted = head-i-s;
+      if(posSteady  < 0) posSteady+=MAX_VALUES;
+      if(posShifted < 0) posShifted+=MAX_VALUES;
+      if(valuesOverTime[posSteady] && valuesOverTime[posShifted]){
+        if(!corrRes[s]) corrRes[s] = 0;
+        corrRes[s] += (valuesOverTime[posSteady].value * valuesOverTime[posShifted].value) / parseFloat(corrLen) / 1000;
+      }
+      else
+        corrRes[s] = 0;
+    }
+  }
+
+  const maxCorr = corrRes.reduce((max, ele) => {return Math.max(max, ele)});
+  const minCorr = corrRes.reduce((min, ele) => {return Math.min(min, ele)});
+  let maxCorrIndex = corrRes.indexOf(maxCorr);
+  let posInArray = head - maxCorrIndex;
+  if(posInArray<0) posInArray += MAX_VALUES;
+  if(valuesOverTime[head] && valuesOverTime[posInArray]) {
+    let timems = valuesOverTime[head].timestamp - valuesOverTime[posInArray].timestamp;
+    let freq = 60 / (timems/1000);
+    console.log("Biggerst correlation at:",timems,"ms", "freq",freq, "Hz");
+    // console.log(corrRes);
+  }
+
+
+  // const maxCorr = Math.max(...corrRes)
+
+  stroke('red');
+  strokeWeight(2);
+  for(let i=dropAtStart;i<corrLen;i++) {
+    if(corrRes[i]){
+      const x = i+w;
+      const y = map(corrRes[i], minCorr, maxCorr, 0, 100);
+      point(x, y);
+    }
+  }
+
 
   if(i%1==0){
     strokeWeight(10);
@@ -86,7 +136,7 @@ function draw() {
     fill(255);
     rect(drawPos, h, 10, gh); // erase old data from graph
     // let drawHeight = map(changeValue, minValue, maxValue, 0, gh);
-    let drawHeight = map(changeValue, minInTimeFrame, maxInTimeFrame, 0+gm, gh-gm);
+    let drawHeight = map( changeValue, minInTimeFrame.value, maxInTimeFrame.value, 0+gm, gh-gm);
     stroke('black'); // Change the color
     strokeWeight(2);
     point(drawPos, drawHeight + h);
